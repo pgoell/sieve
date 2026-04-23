@@ -28,6 +28,6 @@ Each ADR follows the Michael Nygard template:
 | 0002 | [Shared source catalog with subscription-gated access](0002-shared-catalog-and-subscription-gating.md) | Proposed |
 | 0003 | [Inbound email via Cloudflare Email Worker](0003-inbound-email-via-cloudflare-worker.md) | Proposed |
 | 0004 | [BYOK LLM keys with optional platform key](0004-byok-with-platform-key-option.md) | Proposed |
-| 0005 | [Storage split: Postgres + pgvector for data and vectors, MinIO for blobs](0005-storage-split-postgres-minio.md) | Proposed |
+| 0005 | [Storage split: Postgres + pgvector for data and vectors, Hetzner Object Storage for blobs](0005-storage-split-postgres-minio.md) | Proposed |
 
 All current ADRs are Proposed. They will be marked Accepted at the start of Phase 0 implementation.

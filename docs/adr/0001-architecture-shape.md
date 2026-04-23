@@ -25,7 +25,7 @@ Use shape 2: API container + worker container, shared Postgres.
 - The `jobs` table and `SELECT ... FOR UPDATE SKIP LOCKED` provide the job queue.
 - APScheduler inside the worker handles cron-like `digests.cadence` evaluation.
 - Postgres is the single stateful service for relational data, vectors (via pgvector), and jobs.
-- MinIO is the single blob store.
+- Hetzner Object Storage is the blob store in staging and production; MinIO is used in local-dev compose for offline work.
 
 ## Consequences
 

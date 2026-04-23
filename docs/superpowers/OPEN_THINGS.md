@@ -66,8 +66,9 @@ Scaffold + guardrails. Everything Phase 1 assumes to exist: the task runner, the
 #### Datastores
 
 - **Postgres 17 with pgvector.** Extension enabled in init migration. Smoke test proving `vector(1536)` columns work. Migration role separate from app role.
-- **MinIO dev.** Local buckets `sieve-content` and `sieve-mime` auto-created. App credentials scoped to those buckets only.
-- **Compose files.** `compose.yaml` for local dev (Postgres + MinIO), `deploy/compose.yaml` for production (pulls GHCR images, joins the external `web` network).
+- **Object store (local dev via MinIO).** `compose.yaml` runs MinIO alongside Postgres; buckets `sieve-dev-content` and `sieve-dev-mime` auto-created on first boot. App credentials scoped per-bucket. Local-dev only.
+- **Object store (staging and production via Hetzner Object Storage).** Provision `sieve-staging-content` / `sieve-staging-mime` and `sieve-prod-content` / `sieve-prod-mime` buckets in Hetzner's console. Store app credentials as env vars; scope to the buckets. Runbook in `deploy/README.md`.
+- **Compose files.** `compose.yaml` for local dev (Postgres + MinIO), `deploy/compose.yaml` for production (pulls GHCR images, joins the external `web` network; no local MinIO container in prod).
 
 #### Secrets bootstrap
 
@@ -94,13 +95,13 @@ User-facing features that each ship a visible slice of value.
 - **RSS polling scheduler.** Per-source poll interval (default 1h). APScheduler enqueues `rss_poll` jobs when due.
 - **Feed fetch with HTTP caching.** Respect `ETag` and `Last-Modified` so repeat fetches are cheap.
 - **Feed parse and item upsert.** `feedparser`; upsert via `INSERT ... ON CONFLICT (source_id, external_id) DO NOTHING`.
-- **Readable-content extraction.** For each new item, follow the link and extract readable HTML with a library like `readability-lxml` or `trafilatura`. Upload to MinIO as `content/<source_id>/<item_id>.html`.
+- **Readable-content extraction.** For each new item, follow the link and extract readable HTML with a library like `readability-lxml` or `trafilatura`. Upload to the object store as `content/<source_id>/<item_id>.html`.
 - **Error handling and health.** 5 retry attempts with exponential backoff on fetch failure; source marked unhealthy in the UI after.
 
 ### Ingestion: email
 
 - **Cloudflare Email Worker.** JavaScript function under `workers/inbound-email/`. Deployed via Wrangler. Authenticates to the FastAPI webhook with `Authorization: Bearer <SIEVE_INBOUND_SECRET>`. Runbook in `deploy/`.
-- **Inbound webhook handler.** `POST /webhooks/inbound-email` with constant-time bearer check. Parses RFC822, resolves user by `inbound_alias_suffix`, resolves or creates pending `sources` row, stores raw MIME in MinIO, upserts `items` via `(source_id, Message-ID)`.
+- **Inbound webhook handler.** `POST /webhooks/inbound-email` with constant-time bearer check. Parses RFC822, resolves user by `inbound_alias_suffix`, resolves or creates pending `sources` row, stores raw MIME in the object store, upserts `items` via `(source_id, Message-ID)`.
 - **Pending inbound queue.** Mail from unknown senders goes into `pending_inbound`; surfaces a card in the admin UI pre-filled with what we know. On admin approval, queued rows drain into `items`.
 - **MIME body extraction.** Parse `multipart/*`, prefer `text/html` body for content, fall back to `text/plain`. Sanitize on read, not on write.
 - **Forwarded-newsletter detection.** Some users forward newsletters from a primary inbox; the `From:` then points at themselves. Detect forwarded `From:`/`Reply-To:`/`X-Forwarded-*` headers and use the original sender for source canonicalization.

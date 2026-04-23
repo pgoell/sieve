@@ -1,4 +1,4 @@
-# ADR 0005: Storage split: Postgres + pgvector for data and vectors, MinIO for blobs
+# ADR 0005: Storage split: Postgres + pgvector for data and vectors, Hetzner Object Storage for blobs
 
 **Status:** Proposed
 **Date:** 2026-04-23
@@ -23,11 +23,15 @@ Options considered:
 Use option 4.
 
 - **Postgres (PostgreSQL 17 with the `vector` extension).** Holds all relational data, the `items.embedding` column (pgvector), and the `jobs` table. One backup, one restore path. HNSW indexes for k-NN queries.
-- **MinIO.** Self-hosted S3-compatible store on the same VPS. Keys of the form `content/<source_id>/<item_id>.html` and `mime/<user_id>/<message_id>.eml`. Buckets: `sieve-content`, `sieve-mime`. Versioning off in Phase 1; retention policy configurable later.
+- **Object store.** S3-compatible storage used for heavy blobs (full HTML content, raw MIME, later audio and video).
+  - **Staging and production: Hetzner Object Storage.** Native to the same cloud provider as the VPS, which means low-latency intra-region access and no cross-provider egress. S3-compatible API, so the application uses the standard `boto3` or equivalent S3 SDK with only endpoint + credentials varying by environment.
+  - **Local dev: MinIO in `compose.yaml`.** Lets contributors work offline without provisioning a real bucket. Same S3 API surface as Hetzner Object Storage.
+  - Keys of the form `content/<source_id>/<item_id>.html` and `mime/<user_id>/<message_id>.eml`. Buckets: `sieve-content`, `sieve-mime`. Per environment: `sieve-dev-content`, `sieve-staging-content`, `sieve-prod-content` (and `-mime` variants). Versioning off in Phase 1; retention policy configurable later.
+  - **Why not Hetzner Storage Box?** Storage Box is SFTP / SMB / WebDAV, not S3-compatible. Wrong API for an S3-first design.
 
 ### Blob access pattern
 
-- Application writes to MinIO via the S3 protocol using app-scoped credentials.
+- Application writes to the object store via the S3 protocol using app-scoped credentials.
 - `items.content_blob_key` stores the key; the app fetches by key at read time.
 - The blob is never inlined into API responses; it is fetched and sanitized on demand for the reader view.
 
@@ -39,7 +43,7 @@ Use option 4.
 
 ### Growth path
 
-- MinIO can move to Hetzner Storage Box or Cloudflare R2 by changing endpoint + credentials in env. Keys and bucket names stay the same.
+- Hetzner Object Storage can move to any other S3-compatible provider (Cloudflare R2, Backblaze B2, AWS S3) by changing endpoint + credentials in env. Keys and bucket names stay the same. MinIO stays as the local-dev target.
 - pgvector handles millions of rows at this dim count comfortably; upgrading to a dedicated vector DB is a Phase 4+ concern, if ever.
 
 ## Consequences
@@ -48,12 +52,12 @@ Use option 4.
 
 - One database to operate for OLTP + vectors. One set of transactions. `items` row and its embedding can be inserted in one statement.
 - Object storage is on a standard, widely-supported API (S3); migrations between backends are trivial.
-- Backup sizes are bounded; Postgres dumps are small, MinIO can be backed up or replicated independently.
-- No extra stateful service in Phase 1 beyond Postgres and MinIO.
+- Backup sizes are bounded; Postgres dumps are small, the object store can be backed up or replicated independently (Hetzner provides bucket-level tooling).
+- No extra stateful service to operate on the VPS beyond Postgres. Hetzner Object Storage is managed; MinIO only runs in local dev.
 
 ### Harder
 
-- Reader view requires a round trip to MinIO on item expand. Acceptable latency; MinIO is on the same host. Cacheable at the application layer if ever needed.
+- Reader view requires a round trip to the object store on item expand. Hetzner Object Storage is in the same region as the VPS, so latency is low; cacheable at the application layer if ever needed.
 - Object store and database can drift (blob deleted, key still referenced) under a crash. Mitigated by: blobs are written first, then the row with the key; delete flow marks row deleted, then deletes blob.
 
 ### Rejected alternatives

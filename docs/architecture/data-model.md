@@ -78,7 +78,7 @@ Canonical items. Dedup by `(source_id, external_id)`.
 | author            | text NULL                |                                               |
 | published_at      | timestamptz NULL         | Publisher's timestamp if available            |
 | fetched_at        | timestamptz              | Our ingest time; used for subscription window |
-| content_blob_key  | text                     | MinIO key for full content                    |
+| content_blob_key  | text                     | Object store key for full content                    |
 | summary_text      | text NULL                | Populated by LLM summarization job            |
 | embedding         | vector(1536)             | pgvector; dims depend on provider             |
 | created_at        | timestamptz              |                                               |
@@ -133,7 +133,7 @@ Mail received from senders not yet canonicalized as a source. Awaits admin revie
 | id                | uuid PK                    |                                        |
 | user_id           | uuid FK users(id)          | Recipient                              |
 | sender            | text                       | Parsed `From:`                         |
-| raw_mime_blob_key | text                       | MinIO key for the original mail        |
+| raw_mime_blob_key | text                       | Object store key for the original mail        |
 | received_at       | timestamptz                |                                        |
 
 ### `llm_usage`

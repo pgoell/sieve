@@ -10,7 +10,7 @@
 
 Sieve is a scheduled digest platform: a user subscribes to content sources (RSS feeds and emailed newsletters in Phase 1; YouTube and podcasts later), and the system produces personalized briefs on a schedule the user controls. Each brief pulls items from the user's chosen sources, summarizes them via an LLM, and links to originals. The web app is the primary consumption surface; email delivers a short notification with a deep link; a JSON API makes the same digest consumable by agents.
 
-The product is scoped for a small trusted group, invite-only, with admin curation of email sources (to keep out of paid-content redistribution risk). The architecture is an API + worker split on shared Postgres with pgvector for embeddings and a MinIO object store for content blobs.
+The product is scoped for a small trusted group, invite-only, with admin curation of email sources (to keep out of paid-content redistribution risk). The architecture is an API + worker split on shared Postgres with pgvector for embeddings and an S3-compatible object store (Hetzner Object Storage in prod, MinIO in local dev) for content blobs.
 
 ---
 
@@ -52,7 +52,7 @@ The vision is intentionally larger than a sensible first release. The repo captu
 
 ### Phase 0: Foundation
 
-Repo scaffolded in the Klassenzeit shape. CI, lint, test, mise, Docker, Caddy subdomain, Postgres + pgvector + MinIO wired up, Alembic migrations, magic-link auth with invite codes working, empty React shell behind auth. No user-facing features yet. The point is that Phase 1 ships features, not plumbing.
+Repo scaffolded in the Klassenzeit shape. CI, lint, test, mise, Docker, Caddy subdomain, Postgres + pgvector + Hetzner Object Storage (MinIO in local compose) wired up, Alembic migrations, magic-link auth with invite codes working, empty React shell behind auth. No user-facing features yet. The point is that Phase 1 ships features, not plumbing.
 
 ### Phase 1 (MVP): RSS + email Brief
 
@@ -62,7 +62,7 @@ The narrowest end-to-end slice that delivers value.
 - Adds their Anthropic key (BYOK), or is on a paid plan with access to the platform key
 - RSS: subscribes to sources by URL (self-service; auto-creates the canonical source if new)
 - Email: submits a request for a newsletter; admin adds the canonical source; user forwards or signs up with their alias
-- Worker polls RSS, receives email via Cloudflare Email Worker webhook, ingests items (dedup via `(source_id, external_id)`), stores full content in MinIO, generates embeddings
+- Worker polls RSS, receives email via Cloudflare Email Worker webhook, ingests items (dedup via `(source_id, external_id)`), stores full content in the object store, generates embeddings
 - User creates one or more digests (`name`, `cadence`, `source subset`, `max_items`, `kind=brief`)
 - On schedule, worker gathers recent items, summarizes via user's key, assembles digest JSON, persists `digest_runs`, sends a short email notification with a deep link
 - Web app renders the digest and supports inline expansion of item content; marks items as read
@@ -126,12 +126,12 @@ Browser ──▶  Caddy   ├──────▶│  FastAPI (web)     │
                            └───────────┬─────────┘
                                        │
                                        ▼
-                             ┌──────────────────┐
-                             │      MinIO       │
-                             │  full HTML,      │
-                             │  raw MIME,       │
-                             │  (later) audio   │
-                             └──────────────────┘
+                             ┌────────────────────────┐
+                             │  Hetzner Object        │
+                             │  Storage (S3-compat.)  │
+                             │  full HTML, raw MIME,  │
+                             │  (later) audio         │
+                             └────────────────────────┘
 
                       ┌─────────────────────────────────┐
 Inbound email ───────▶│ Cloudflare Email Worker         │
@@ -147,7 +147,7 @@ Inbound email ───────▶│ Cloudflare Email Worker         │
 - **Web container.** FastAPI serving the REST API, the webhook endpoints, and the built React SPA's static assets. Pure synchronous request/response. No long-running work.
 - **Worker container.** A single Python process running APScheduler (cron-like per-digest schedules stored in Postgres) plus a job loop that reads from a `jobs` table using `SELECT ... FOR UPDATE SKIP LOCKED`. Handles feed polling, email ingestion follow-through, content normalization, summarization via BYOK or platform LLM key, embedding generation, and digest rendering.
 - **Postgres.** Backbone. Stores relational data, pgvector embeddings, and the job queue. One backup, one snapshot, one restore path.
-- **MinIO.** S3-compatible object store for heavy blobs: full HTML content, raw MIME, later audio and video. Self-hosted on the VPS in Phase 1; migration path to Hetzner Storage Box or Cloudflare R2 if storage or egress grows.
+- **Object store.** S3-compatible storage for heavy blobs: full HTML content, raw MIME, later audio and video. **Hetzner Object Storage** in staging and production (native to the same cloud as the VPS, low-latency, cheap); **MinIO in compose** for local dev so offline work is possible. Application code uses the S3 SDK identically against either; only endpoint + credentials change per environment.
 - **Cloudflare Email Worker.** Tiny JavaScript function on `*@in.digest.pascalkraus.com`. Receives inbound mail, validates, POSTs raw RFC822 to the FastAPI webhook with a shared-secret bearer token. Lives either in a `workers/inbound-email/` subdirectory of this repo or a small sibling repo.
 - **Caddy.** Existing reverse proxy, handles TLS, routes `digest.pascalkraus.com` (placeholder subdomain) to the web container.
 
@@ -155,7 +155,7 @@ Inbound email ───────▶│ Cloudflare Email Worker         │
 
 - Clean separation between burst-y async work (summarization, ingestion) and user-facing request/response. A stuck LLM call cannot stall the API.
 - Four containers is the same order of complexity as Klassenzeit; mental model carries over.
-- No additional stateful services beyond Postgres and MinIO. Redis, Kafka, and a dedicated message broker are explicit non-goals for Phase 1.
+- No additional stateful services beyond Postgres and the object store. Redis, Kafka, and a dedicated message broker are explicit non-goals for Phase 1.
 - DB-as-queue (`SELECT ... FOR UPDATE SKIP LOCKED`) is genuinely fine at this scale. If load grows, the queue can move to Redis + Arq without touching the pipeline modules.
 
 ### Stack
@@ -165,7 +165,7 @@ Inbound email ───────▶│ Cloudflare Email Worker         │
 | Backend    | Python + FastAPI + SQLAlchemy + Alembic             | Matches Klassenzeit; mature, typed, fast to build  |
 | Frontend   | React + Vite + Biome + TypeScript                   | Matches Klassenzeit; OpenAPI codegen for types      |
 | Database   | PostgreSQL 17 with pgvector                         | One system for relational + vector search           |
-| Object store | MinIO (later Hetzner Storage Box or R2)           | Self-hosted; S3 API; cheap                          |
+| Object store | Hetzner Object Storage (prod); MinIO (local dev)  | Same cloud as VPS; S3-compatible; cheap             |
 | Toolchain  | mise for pinning Rust/Python/Node/uv/pnpm           | Klassenzeit convention                              |
 | Deploy     | GHCR images + Docker Compose + Caddy                | Klassenzeit convention                              |
 | Inbound email | Cloudflare Email Worker + webhook                | No SMTP/MX ops burden                               |
@@ -223,11 +223,11 @@ jobs               (id, kind, payload_json, scheduled_for,
 
 ### Key modeling decisions
 
-- **Sources are a shared, canonical catalog.** One row per `(kind, identity)`. Ten users subscribed to Stratechery means one `sources` row, one `items` row per article, one blob per item in MinIO.
+- **Sources are a shared, canonical catalog.** One row per `(kind, identity)`. Ten users subscribed to Stratechery means one `sources` row, one `items` row per article, one blob per item in the object store.
 - **Access is gated by subscription, not by data shape.** All queries that return items to a user must join through `subscriptions` and respect `subscribed_at` and `unsubscribed_at`. Un-subscribing does not retroactively revoke access to already-delivered items (those remain readable in the user's past digests and archive); it stops new items from flowing.
 - **Items are deduplicated per `(source_id, external_id)`.** For RSS, `external_id` is the feed's GUID or item URL. For email, it is the `Message-ID` header. If the same email arrives at multiple users' aliases, the second delivery is idempotent.
 - **Embeddings live next to the items.** pgvector column directly on `items`. No separate vector store.
-- **Blobs live in MinIO.** `content_blob_key` is the S3 key for the full content. Postgres never stores large text or binary.
+- **Blobs live in the object store.** `content_blob_key` is the S3 key for the full content. Postgres never stores large text or binary.
 - **Jobs are a table, not Redis.** `SELECT ... FOR UPDATE SKIP LOCKED` gives us a real queue with retries and backoff without another stateful service.
 
 ---
@@ -240,7 +240,7 @@ Detailed flows in [`docs/architecture/ingestion.md`](../../architecture/ingestio
 
 1. Worker ticks each active RSS source at its configured poll interval (default 1h).
 2. Fetches the feed, diffs against stored `items.external_id`.
-3. For each new item: follows the link, extracts readable content, stores HTML blob in MinIO, creates the `items` row.
+3. For each new item: follows the link, extracts readable content, stores HTML blob in the object store, creates the `items` row.
 4. Queues a job to generate summary and embedding.
 5. Downstream summary/embedding job executes using the owning user's resolved LLM key.
 

@@ -33,7 +33,7 @@ Each active RSS source has a poll interval (default 1h, configurable per source)
     ├── INSERT items ... ON CONFLICT (source_id, external_id) DO NOTHING
     ├── if inserted:
     │     ├── fetch link → extract readable content
-    │     ├── upload HTML to MinIO → set content_blob_key
+    │     ├── upload HTML to object store → set content_blob_key
     │     ├── enqueue summarize_item job
     │     └── enqueue embed_item job
     └── else:
@@ -43,7 +43,7 @@ Each active RSS source has a poll interval (default 1h, configurable per source)
 ### Error handling
 
 - Feed fetch failures: logged, retried with exponential backoff up to 5 attempts, then alert.
-- Parse failures: logged with the offending payload in MinIO for debugging, source marked unhealthy in UI.
+- Parse failures: logged with the offending payload in the object store for debugging, source marked unhealthy in UI.
 - Content extraction failure: item still created with `content_blob_key = NULL`; summarization can still use the feed's `<description>`.
 
 ## Email ingestion
@@ -88,8 +88,8 @@ POST /webhooks/inbound-email
        │   INSERT items (source_id, external_id=Message-ID, ...)
        │     ON CONFLICT DO NOTHING
        │        │
-       │        ├── upload raw MIME to MinIO → content_blob_key
-       │        ├── extract HTML body → upload to MinIO (optional secondary key)
+       │        ├── upload raw MIME to object store → content_blob_key
+       │        ├── extract HTML body → upload to object store (optional secondary key)
        │        ├── enqueue summarize_item
        │        └── enqueue embed_item
        │

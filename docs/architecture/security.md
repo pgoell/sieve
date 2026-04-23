@@ -89,7 +89,7 @@ Implementation in Phase 1 via `slowapi` or equivalent; Redis is not required at 
 
 ## File and blob safety
 
-- Objects in MinIO are addressed by opaque UUID keys, never by user-controlled names.
+- Objects in the object store are addressed by opaque UUID keys, never by user-controlled names.
 - HTML content blobs are always sanitized on read, never at write time, so the raw original is preserved for re-sanitization if the sanitizer is updated.
 - Raw MIME blobs are read-only after write.
 
@@ -119,6 +119,6 @@ The subscription-gating rules in the top-level design doc (Principles #2 and #3)
 - [ ] `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` (platform keys) set
 - [ ] Transactional email provider API key set
 - [ ] Postgres credentials set, migration role separate from app role
-- [ ] MinIO root and app credentials set, app key scoped to the sieve bucket only
+- [ ] Hetzner Object Storage credentials set, app key scoped to the sieve buckets only (staging + production). Local dev MinIO credentials set separately in `.env.local`.
 
 None of the above keys ever appear in this repo or in logs.

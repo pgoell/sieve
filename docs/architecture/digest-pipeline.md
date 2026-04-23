@@ -114,7 +114,7 @@ The web render and the API response are the same JSON. No divergent serializers.
 When a user expands an item in the digest view, the SPA fetches `/api/items/<item_id>/content`. The handler:
 
 1. Verifies the user has an active subscription to the item's source (and the item was fetched within the subscription window).
-2. Loads the content blob from MinIO using `items.content_blob_key`.
+2. Loads the content blob from the object store using `items.content_blob_key`.
 3. Returns sanitized HTML.
 
 HTML sanitization is a required security step; see [security.md](security.md).

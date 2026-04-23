@@ -2,7 +2,7 @@
 
 ## One-paragraph summary
 
-Sieve is a FastAPI web container plus a Python worker container, sharing a Postgres instance (with pgvector for embeddings and `SELECT ... FOR UPDATE SKIP LOCKED` for the job queue) and a MinIO object store for content blobs. Inbound email arrives via a Cloudflare Email Worker that POSTs raw RFC822 to an authenticated webhook on the web container. The React SPA is served as static assets by the web container behind Caddy. LLM calls use Anthropic or Google Gemini, resolved per-user (BYOK default, platform key for paid users).
+Sieve is a FastAPI web container plus a Python worker container, sharing a Postgres instance (with pgvector for embeddings and `SELECT ... FOR UPDATE SKIP LOCKED` for the job queue) and an S3-compatible object store for content blobs (Hetzner Object Storage in staging and production, MinIO in compose for local dev). Inbound email arrives via a Cloudflare Email Worker that POSTs raw RFC822 to an authenticated webhook on the web container. The React SPA is served as static assets by the web container behind Caddy. LLM calls use Anthropic or Google Gemini, resolved per-user (BYOK default, platform key for paid users).
 
 ## System diagram
 
@@ -32,12 +32,12 @@ Browser ──▶  Caddy   ├──────▶│  FastAPI (web)     │
                            └───────────┬─────────┘
                                        │
                                        ▼
-                             ┌──────────────────┐
-                             │      MinIO       │
-                             │  full HTML,      │
-                             │  raw MIME,       │
-                             │  (later) audio   │
-                             └──────────────────┘
+                             ┌────────────────────────┐
+                             │  Hetzner Object        │
+                             │  Storage (S3-compat.)  │
+                             │  full HTML, raw MIME,  │
+                             │  (later) audio         │
+                             └────────────────────────┘
 
                       ┌─────────────────────────────────┐
 Inbound email ───────▶│ Cloudflare Email Worker         │
@@ -59,7 +59,7 @@ FastAPI. Serves:
 - Webhook endpoints (`/webhooks/inbound-email`).
 - Admin endpoints for source approval.
 
-Stateless. Single replica is plenty for a trust group; horizontal scaling is a no-op if ever needed because all state is in Postgres or MinIO.
+Stateless. Single replica is plenty for a trust group; horizontal scaling is a no-op if ever needed because all state is in Postgres or the object store.
 
 ### Worker container
 
@@ -74,15 +74,17 @@ Single worker is fine at the Phase 1 scale. Moving to Redis + Arq for multiple w
 
 One database. Holds relational data, vector embeddings (1536 or 3072 dims, provider-dependent), and the `jobs` queue. HNSW indexes on the embedding column for k-NN queries. Backups are a single `pg_dump` per schedule.
 
-### MinIO
+### Object store
 
-Self-hosted S3-compatible object store running on the same VPS in Phase 1. Holds:
+S3-compatible storage. In staging and production: **Hetzner Object Storage** (native to the same cloud provider as the VPS; low-latency intra-region, cheap, S3-compatible). In local dev: **MinIO in compose** so offline work is possible. Application code talks to both identically via the S3 SDK; only endpoint + credentials vary per environment.
+
+Holds:
 
 - Full HTML of RSS items (post-extraction).
 - Raw MIME of inbound emails.
 - (Later) audio and video blobs.
 
-Migration paths for scale are well-understood (Hetzner Storage Box, Cloudflare R2); no code change beyond a config swap.
+Buckets: `sieve-content` and `sieve-mime`. App credentials scoped per-bucket.
 
 ### Cloudflare Email Worker
 
@@ -96,7 +98,7 @@ Existing reverse proxy on the VPS, terminating TLS for all subdomains. Routes `d
 
 | Flow                  | Entry                        | Exit                                       |
 |-----------------------|------------------------------|--------------------------------------------|
-| RSS ingestion         | Scheduled RSS poll job       | New `items` rows, MinIO blobs              |
+| RSS ingestion         | Scheduled RSS poll job       | New `items` rows, object-store blobs       |
 | Email ingestion       | CF Email Worker → webhook    | New `items` or `pending_inbound` rows      |
 | Summarization         | `summarize_item` job         | `items.summary_text` populated             |
 | Embedding             | `embed_item` job             | `items.embedding` populated                |

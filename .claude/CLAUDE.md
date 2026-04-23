@@ -27,7 +27,7 @@ See [Anthropic's memory docs](https://code.claude.com/docs/en/memory) for the lo
 - **`frontend/`**: Vite + React + TypeScript SPA. Proxies to backend in dev. OpenAPI-codegen types (`mise run fe:types`).
 - **`workers/inbound-email/`**: Cloudflare Email Worker. JS, deployed via Wrangler. POSTs raw RFC822 to the backend's webhook.
 - **`deploy/`**: compose files for staging + production. GHCR images published by GitHub Actions on master. Joins the external `web` network run out of `~/Code/server-infra/`.
-- **Datastores:** Postgres 17 with pgvector (relational + vectors + job queue), MinIO (content and MIME blobs).
+- **Datastores:** Postgres 17 with pgvector (relational + vectors + job queue); S3-compatible object store for blobs (Hetzner Object Storage in staging and production, MinIO in local-dev compose).
 - **LLM:** Anthropic + Google Gemini via pluggable `Summarizer` / `Embedder` interfaces. BYOK per user, platform key for paid users.
 
 Full picture in [`docs/architecture/overview.md`](../docs/architecture/overview.md).
