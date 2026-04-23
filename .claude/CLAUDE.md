@@ -12,21 +12,21 @@ No backend, frontend, or worker code has been written yet. Phase 0 (see OPEN_THI
 
 ## Where rules live
 
-- **This file (`.claude/CLAUDE.md`)** — project-wide architecture, workflow, conventions. Loaded every session.
-- **`backend/CLAUDE.md`** (after Phase 0) — Python / FastAPI / SQLAlchemy / pytest rules scoped to backend files.
-- **`frontend/CLAUDE.md`** (after Phase 0) — React / Vite / Biome / Vitest rules scoped to frontend files.
-- **`workers/inbound-email/CLAUDE.md`** (after Phase 0) — Cloudflare Worker rules scoped to the worker.
-- **`.claude/rules/*.md`** (as needed) — rules scoped by file path via `paths:` frontmatter.
+- **This file (`.claude/CLAUDE.md`)**: project-wide architecture, workflow, conventions. Loaded every session.
+- **`backend/CLAUDE.md`** (after Phase 0): Python / FastAPI / SQLAlchemy / pytest rules scoped to backend files.
+- **`frontend/CLAUDE.md`** (after Phase 0): React / Vite / Biome / Vitest rules scoped to frontend files.
+- **`workers/inbound-email/CLAUDE.md`** (after Phase 0): Cloudflare Worker rules scoped to the worker.
+- **`.claude/rules/*.md`** (as needed): rules scoped by file path via `paths:` frontmatter.
 
 See [Anthropic's memory docs](https://code.claude.com/docs/en/memory) for the loading model.
 
 ## Architecture (target state)
 
-- **`backend/`** — FastAPI + SQLAlchemy async web container. REST API, magic-link auth, webhook endpoints. Runtime state (engine, session factory, settings) on `app.state` set in `lifespan`.
+- **`backend/`**: FastAPI + SQLAlchemy async web container. REST API, magic-link auth, webhook endpoints. Runtime state (engine, session factory, settings) on `app.state` set in `lifespan`.
 - **`backend/`** also hosts the **worker** entry point: APScheduler + DB-backed job queue (`SELECT ... FOR UPDATE SKIP LOCKED`). Packaged as the same Python module, run as a separate container with a different command.
-- **`frontend/`** — Vite + React + TypeScript SPA. Proxies to backend in dev. OpenAPI-codegen types (`mise run fe:types`).
-- **`workers/inbound-email/`** — Cloudflare Email Worker. JS, deployed via Wrangler. POSTs raw RFC822 to the backend's webhook.
-- **`deploy/`** — compose files for staging + production. GHCR images published by GitHub Actions on master. Joins the external `web` network run out of `~/Code/server-infra/`.
+- **`frontend/`**: Vite + React + TypeScript SPA. Proxies to backend in dev. OpenAPI-codegen types (`mise run fe:types`).
+- **`workers/inbound-email/`**: Cloudflare Email Worker. JS, deployed via Wrangler. POSTs raw RFC822 to the backend's webhook.
+- **`deploy/`**: compose files for staging + production. GHCR images published by GitHub Actions on master. Joins the external `web` network run out of `~/Code/server-infra/`.
 - **Datastores:** Postgres 17 with pgvector (relational + vectors + job queue), MinIO (content and MIME blobs).
 - **LLM:** Anthropic + Google Gemini via pluggable `Summarizer` / `Embedder` interfaces. BYOK per user, platform key for paid users.
 
@@ -60,17 +60,17 @@ If every quality item in OPEN_THINGS.md is blocked or out of scope for one PR, f
 
 ### Commands
 
-- `mise run dev` — backend with auto-reload
-- `mise run fe:dev` — frontend dev server
-- `mise run worker` — worker container locally
-- `mise run test` — all tests
-- `mise run test:py` — Python only
-- `mise run fe:test` — frontend Vitest only
-- `mise run e2e` — Playwright suite
-- `mise run lint` — all linters
-- `mise run fmt` — auto-format
-- `mise run fe:types` — regenerate frontend OpenAPI types from backend
-- `mise run db:up` / `db:stop` / `db:reset` / `db:migrate` — Postgres lifecycle
+- `mise run dev`: backend with auto-reload
+- `mise run fe:dev`: frontend dev server
+- `mise run worker`: worker container locally
+- `mise run test`: all tests
+- `mise run test:py`: Python only
+- `mise run fe:test`: frontend Vitest only
+- `mise run e2e`: Playwright suite
+- `mise run lint`: all linters
+- `mise run fmt`: auto-format
+- `mise run fe:types`: regenerate frontend OpenAPI types from backend
+- `mise run db:up` / `db:stop` / `db:reset` / `db:migrate`: Postgres lifecycle
 
 ### Prerequisites
 
@@ -95,10 +95,10 @@ All architectural decisions are documented in [`docs/adr/`](../docs/adr/). The A
 
 Before implementing any new feature, structural change, or pattern deviation:
 
-1. **Check ADRs** — read relevant ADRs to understand existing decisions.
-2. **Update or create ADR** — if the change contradicts an existing ADR, update it (set old to "Superseded"). If the change introduces a new pattern, create a new ADR with status "Proposed".
-3. **Implement** — follow the ADR.
-4. **Accept the ADR** — once the feature ships and the decision has held in practice, flip `Status: Proposed` to `Status: Accepted`.
+1. **Check ADRs**: read relevant ADRs to understand existing decisions.
+2. **Update or create ADR**: if the change contradicts an existing ADR, update it (set old to "Superseded"). If the change introduces a new pattern, create a new ADR with status "Proposed".
+3. **Implement**: follow the ADR.
+4. **Accept the ADR**: once the feature ships and the decision has held in practice, flip `Status: Proposed` to `Status: Accepted`.
 
 Nothing gets implemented without being documented in an ADR first, or pointing at the ADR that already covers it.
 
