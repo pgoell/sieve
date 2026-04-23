@@ -8,6 +8,7 @@ A personal newsletter digest platform. Subscribe to the things you care about (n
 
 - [Vision](docs/vision.md): the product idea, who it's for, why it exists.
 - [Design spec](docs/superpowers/specs/2026-04-23-sieve-platform-design.md): the main reference.
+- [Open things](docs/superpowers/OPEN_THINGS.md): running catalog of work, tech debt, and follow-ups. This is where tracking lives; the spec is stable, this list evolves.
 - Architecture
   - [Overview](docs/architecture/overview.md)
   - [Data model](docs/architecture/data-model.md)
