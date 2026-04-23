@@ -52,7 +52,7 @@ Scaffold + guardrails. Everything Phase 1 assumes to exist: the task runner, the
 - **`.claude/CLAUDE.md` already seeded.** Iterate as tooling lands.
 - **`docs/adr/template.md`.** Standard Michael Nygard template with colon-separated titles (no em-dash).
 - **`docs/superpowers/` layout already seeded.** `specs/`, `OPEN_THINGS.md`, later `plans/`.
-- **`/autopilot` slash command.** Either a sieve-local copy (short path) or, preferably, point at the abstracted skill once it exists in `pgoell-claude-tools`. Tracked as an open decision below.
+- **`/autopilot` slash command.** Blocked on the autopilot plugin landing in `pgoell-claude-tools` (design spec: `pgoell-claude-tools/docs/superpowers/specs/2026-04-23-autopilot-plugin-extraction-design.md`, branch `docs/autopilot-plugin-extraction-spec`). Once that plugin exists, sieve adds a thin `.claude/commands/autopilot.md` wrapper plus a `.claude/autopilot.local.md` config. Until then, run the autopilot flow manually by invoking `superpowers:brainstorming` → write spec → `superpowers:writing-plans` → `superpowers:test-driven-development` → PR by hand.
 - **README.md commands table.** Kept in sync with `mise.toml`; regeneration script optional.
 
 #### Container skeletons
