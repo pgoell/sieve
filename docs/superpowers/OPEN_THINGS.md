@@ -22,18 +22,57 @@ Everything below is queued. Ordered roughly by importance within each group. Whe
 
 ### Phase 0: foundation
 
-The invisible prerequisite to Phase 1 shipping any features.
+Scaffold + guardrails. Everything Phase 1 assumes to exist: the task runner, the pre-commit + pre-push hooks, the CI pipeline, the ADR workflow skeleton, the three container skeletons (web, worker, frontend), the datastores, and the agent-development flow (`.claude/CLAUDE.md`, skill invocation conventions, OPEN_THINGS routing). Phase 1 should never need to touch toolchain plumbing.
 
-- **Repo scaffold.** Two containers (web, worker), Postgres with pgvector, MinIO, docker-compose for local dev, Dockerfile per service, Caddy subdomain config for staging and production. Match Klassenzeit's layout (`backend/`, `frontend/`, `workers/`, `deploy/`) so the deploy pattern carries over.
-- **Toolchain with mise.** `mise.toml` pinning Python, Node, uv, pnpm, cocogitto, lefthook. `mise run dev`, `mise run test`, `mise run lint`, `mise run fmt`, `mise run db:up`, `mise run db:migrate` tasks wired to match Klassenzeit muscle memory.
-- **CI in GitHub Actions.** Lint + test + build on every PR; self-hosted runner deploy workflow for staging on master. Mirror `deploy-images.yml` from Klassenzeit so GHCR image publication is identical.
-- **Backend package skeleton.** FastAPI app with `lifespan`-managed state (engine, session factory, settings, scheduler handle). SQLAlchemy async, Alembic configured. Pydantic Settings reading from env. Structured JSON logging from day one.
-- **Worker container skeleton.** Separate Python entry point, same `src/sieve/` package. APScheduler wired with the Postgres SQLAlchemy job store. Job loop stub with `SELECT ... FOR UPDATE SKIP LOCKED` and a `no_op` job type.
-- **Frontend skeleton.** Vite + React + TypeScript + Biome. Empty auth-gated shell. OpenAPI codegen task (`mise run fe:types`) pulling from the backend's emitted schema.
-- **Conventional Commits + lefthook + cocogitto.** Commit-msg hook rejecting non-conventional messages. Pre-push running `mise run test`.
-- **Secrets bootstrap.** `.env.example` listing every required variable from `docs/architecture/security.md`. Documented in `deploy/README.md`.
-- **Postgres with pgvector.** Extension enabled in init migration. A smoke test proving `vector(1536)` columns work.
-- **MinIO dev setup.** Local bucket `sieve-content` and `sieve-mime` created on first boot. Scoped app credentials documented.
+#### Task bundler (mise)
+
+- **`mise.toml` with pinned toolchain.** Pin Python, Node, uv, pnpm, cocogitto, lefthook. Any fresh clone should be fully bootstrapped via `mise install` + `mise run install`.
+- **`mise run install` bootstrap task.** Installs git hooks (lefthook), syncs Python workspace (`uv sync`), installs frontend deps (`pnpm install`).
+- **Daily-loop tasks.** `mise run dev`, `mise run fe:dev`, `mise run worker`, `mise run test`, `mise run test:py`, `mise run fe:test`, `mise run e2e`, `mise run lint`, `mise run fmt`, `mise run db:up`, `mise run db:stop`, `mise run db:reset`, `mise run db:migrate`, `mise run fe:types`.
+
+#### Pre-commit guardrails (lefthook)
+
+- **`.config/lefthook.yaml` with a pre-commit stage.** Runs: `ruff check`, `ty`, `vulture` (or equivalent dead-code check), `biome check`, `actionlint` on changed GH Actions files, `cog verify` on commit messages.
+- **Commit-msg hook.** `cog verify` rejects non-Conventional-Commits messages. Types pinned in `.github/commit-types.yml` and generated into `CONTRIBUTING.md` + `pr-title.yml` via `mise run gen:commit-types`.
+- **Pre-push stage.** Runs `mise run lint` + `mise run test` + `mise run fe:test`. Full suite before anything hits origin. Use `mise exec -- git push` so the pinned lefthook runs.
+- **`scripts/check_unique_fns.py` (Python) + equivalent for TS.** Enforces globally unique function names across the codebase. Called from pre-commit.
+- **Secret-in-commit hook.** `gitleaks` or `detect-secrets` in pre-commit; blocks accidental `.env` leaks.
+
+#### CI (GitHub Actions)
+
+- **`ci.yml`.** On every PR: install mise, `mise run lint`, `mise run test`, `mise run fe:test`, `mise run e2e` (headless Chromium). Fail fast, full logs.
+- **`deploy-images.yml`.** Build + push GHCR images for backend, worker, frontend on every push to `main`. Mirror Klassenzeit's workflow so the deploy pattern is identical.
+- **`pr-title.yml`.** `amannn/action-semantic-pull-request` check with PR title rules (lowercase subject, types from the YAML).
+- **`audit.yml` nightly.** `pip-audit`, `cargo deny` (if Rust ever added), npm audit, drift check on GH repo settings.
+- **Branch protection for `main`.** Required checks: `ci`, `pr-title`. Tightened in `.claude/branch-protection.json` with a `repo:apply-settings` script so config is code.
+- **Self-hosted runner for staging deploy.** Same pattern as Klassenzeit (`iuno-sieve`-style runner).
+
+#### Development flow scaffolding
+
+- **`.claude/CLAUDE.md` already seeded.** Iterate as tooling lands.
+- **`docs/adr/template.md`.** Standard Michael Nygard template with colon-separated titles (no em-dash).
+- **`docs/superpowers/` layout already seeded.** `specs/`, `OPEN_THINGS.md`, later `plans/`.
+- **`/autopilot` slash command.** Either a sieve-local copy (short path) or, preferably, point at the abstracted skill once it exists in `pgoell-claude-tools`. Tracked as an open decision below.
+- **README.md commands table.** Kept in sync with `mise.toml`; regeneration script optional.
+
+#### Container skeletons
+
+- **`backend/` FastAPI app.** `lifespan`-managed state (engine, session factory, settings, scheduler handle). SQLAlchemy async, Alembic configured. Pydantic Settings from env. Structured JSON logging from day one.
+- **Worker entrypoint.** Same `src/sieve/` package, separate CLI entry. APScheduler with Postgres SQLAlchemy job store. Job loop stub with `SELECT ... FOR UPDATE SKIP LOCKED` and a `no_op` job type.
+- **`frontend/` Vite + React + TypeScript + Biome.** Empty auth-gated shell. `mise run fe:types` task pulling from the backend's emitted OpenAPI schema.
+- **`workers/inbound-email/` placeholder.** `wrangler.toml` + an unimplemented handler posting `501` until Phase 1 wires the real ingestion handler.
+- **Dockerfiles.** One per container. Built with `context: .` (repo root), `file: <subdir>/Dockerfile`; matching `.dockerignore` beside each.
+
+#### Datastores
+
+- **Postgres 17 with pgvector.** Extension enabled in init migration. Smoke test proving `vector(1536)` columns work. Migration role separate from app role.
+- **MinIO dev.** Local buckets `sieve-content` and `sieve-mime` auto-created. App credentials scoped to those buckets only.
+- **Compose files.** `compose.yaml` for local dev (Postgres + MinIO), `deploy/compose.yaml` for production (pulls GHCR images, joins the external `web` network).
+
+#### Secrets bootstrap
+
+- **`.env.example`.** Every variable from [`docs/architecture/security.md`](../architecture/security.md) listed with a description and a sample value shape.
+- **`deploy/README.md`.** Secrets-provisioning runbook.
 
 ### Product capabilities (Phase 1)
 
