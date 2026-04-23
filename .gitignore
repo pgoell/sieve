@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.env.local
+*.log
+.idea/
+.vscode/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+target/
+dist/
+build/
